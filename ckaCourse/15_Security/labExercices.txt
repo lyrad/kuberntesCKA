@@ -1,0 +1,136 @@
+### Working with TLS.
+# Shows security information such as certificates and authorization mode and config files location.
+systemctl status kubelet.service
+
+# Kubelet config, will contain the directory where other pod spec can be found (staticPodPath).
+sudo less /var/lib/kubelet/config.yaml
+sudo ls /etc/kubernetes/manifests/
+sudo less /etc/kubernetes/manifests/kube-controller-manager.yaml
+
+# Show secrets (token), and get secret details.
+kubectl -n kube-system get secrets
+kubectl -n kube-system get secrets hubble-server-certs -o yaml
+
+# Create a token.
+sudo kubeadm token create
+
+# Show cluster config (users...), backup the current config.
+kubectl config view
+cp $HOME/.kube/config $HOME/cluster-api-config
+
+# Explore cluster config update options.
+kubectl config <Tab><Tab>
+sudo kubeadm token -h
+sudo kubeadm config -h
+sudo kubeadm config print init-defaults
+
+
+### Authentication and Authorization.
+# Create two namespaces.
+kubectl create ns development
+kubectl create ns production
+
+# See existing contexts.
+kubectl config get-contexts
+
+# Create a new user DevDan password azerty.
+sudo useradd -s /bin/bash DevDan
+sudo passwd DevDan
+
+# Generate a private key for DevDan, an associated Certificate Signing Request (CSR), and a signed certificate.
+openssl genrsa -out DevDan.key 2048
+touch $HOME/.rnd
+openssl req -new -key DevDan.key -out DevDan.csr -subj "/CN=DevDan/O=development"
+sudo openssl x509 -req -in DevDan.csr -CA /etc/kubernetes/pki/ca.crt -CAkey /etc/kubernetes/pki/ca.key -CAcreateserial -out DevDan.crt -days 45
+
+# Update the cluster config to reference the new user, key and certificate.
+kubectl config set-credentials DevDan --client-certificate=/home/ubuntu/DevDan.crt --client-key=/home/ubuntu/DevDan.key
+
+# See the difference between current updated config and config we backuped at previous chapter.
+diff cluster-api-config .kube/config
+
+## Create a context for development and try to see the pods using it.
+kubectl config set-context DevDan-context --cluster=kubernetes --namespace=development --user=DevDan
+kubectl config get-contexts
+diff cluster-api-config .kube/config
+kubectl --context=DevDan-context get pods
+
+# Create a Role to set RBAC rights to a namespace (role-dev.yaml).
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: development
+  name: developer
+rules:
+- apiGroups: ["","extensions","apps"]
+  resources: ["deployments","replicasets","pods"]
+  verbs: ["list","get","watch","create","update","patch","delete"]
+
+kubectl create -f role-dev.yaml
+
+# Create a RoleBinding to associate the Role with an user (rolebind.yaml).
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: developer-role-binding
+  namespace: development
+subjects:
+- kind: User
+  name: DevDan
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: developer
+  apiGroup: ""
+
+kubectl create -f rolebind.yaml
+
+# Now test listing pods using the context (will work), create/check/delete a pod.
+kubectl --context=DevDan-context get pods
+kubectl --context=DevDan-context create deployment  nginx --image=nginx
+kubectl --context=DevDan-context get pods
+kubectl --context=DevDan-context delete deploy nginx
+
+## Create another context for production.
+kubectl config set-context ProdDan-context --cluster=kubernetes --namespace=production --user=DevDan
+kubectl config get-contexts
+
+# Create associated Role (role-prod.yaml).
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: production
+  name: dev-prod
+rules:
+- apiGroups: ["","extensions","apps"]
+  resources: ["deployments","replicasets","pods"]
+  verbs: ["get","list","watch"]
+
+kubectl create -f role-prod.yaml
+
+# Create the associated RoleBinding.
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: production-role-binding
+  namespace: production
+subjects:
+- kind: User
+  name: DevDan
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: dev-prod
+  apiGroup: ""
+
+kubectl create -f rolebindprod.yaml
+
+# List the pods in the context, try to create a deployment (will fail), view the details of the role.
+kubectl --context=ProdDan-context get pods
+kubectl --context=ProdDan-context create deployment nginx --image=nginx
+kubectl -n production describe role dev-prod
+
+
+### Admission Controllers.
+# See the current activated admission control plug-in.
+sudo grep admission \/etc/kubernetes/manifests/kube-apiserver.yaml

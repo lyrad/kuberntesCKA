@@ -1,0 +1,98 @@
+# etcd-ip-172-31-44-140.eu-west-3.compute.internal
+
+## Backup the etcd database.
+# Find the etcd datadir on control panel node.
+sudo grep data-dir /etc/kubernetes/manifests/etcd.yaml
+
+# Log in etcd container and look for the certificate directory/files.
+kubectl -n kube-system exec -it etcd-ip-172-31-44-140.eu-west-3.compute.internal -- sh
+echo /etc/kubernetes/pki/etcd/*
+
+# Healthcheck database using the loopback IP and port 2379.
+kubectl -n kube-system exec -it etcd-ip-172-31-44-140.eu-west-3.compute.internal -- sh \
+-c "ETCDCTL_API=3 \
+ETCDCTL_CACERT=/etc/kubernetes/pki/etcd/ca.crt \
+ETCDCTL_CERT=/etc/kubernetes/pki/etcd/server.crt \
+ETCDCTL_KEY=/etc/kubernetes/pki/etcd/server.key \
+etcdctl endpoint health"
+
+# Determine how many databases are part of the cluster (3 or 5 in production, 1 in base install).
+# -w table for a display in a table format.
+kubectl -n kube-system exec -it etcd-ip-172-31-44-140.eu-west-3.compute.internal -- sh \
+-c "ETCDCTL_API=3 \
+ETCDCTL_CACERT=/etc/kubernetes/pki/etcd/ca.crt \
+ETCDCTL_CERT=/etc/kubernetes/pki/etcd/server.crt \
+ETCDCTL_KEY=/etc/kubernetes/pki/etcd/server.key \
+etcdctl --endpoints=https://127.0.0.1:2379 member list -w table"
+
+# Save a snapshot into host /var/lib/etcd.
+# sudo ls -l /var/lib/etcd/
+kubectl -n kube-system exec -it etcd-ip-172-31-44-140.eu-west-3.compute.internal -- sh \
+-c "ETCDCTL_API=3 \
+ETCDCTL_CACERT=/etc/kubernetes/pki/etcd/ca.crt \
+ETCDCTL_CERT=/etc/kubernetes/pki/etcd/server.crt \
+ETCDCTL_KEY=/etc/kubernetes/pki/etcd/server.key \
+etcdctl --endpoints=https://127.0.0.1:2379 snapshot save /var/lib/etcd/snapshot.db"
+
+# Backup the cluster data in $HOME/backup.
+# Etcd database(s) snapshot.
+sudo cp /var/lib/etcd/snapshot.db $HOME/backup/snapshot.db-$(date +%m-%d-%y)
+# Cluster configuration file (kubeadm init).
+sudo cp /root/kubeadm-config.yaml $HOME/backup/
+# Etcd certificates.
+sudo cp -r /etc/kubernetes/pki/etcd $HOME/backup/
+
+
+### Upgrading the cluster to a new version.
+# Control Plane Node.
+sudo apt-get install -y kubeadm=1.28.1-00 --allow-change-held-packages
+sudo apt-mark hold kubeadm
+sudo kubeadm version
+
+# Drain all possible nodes, ignoring the daemonsets.
+kubectl drain cp --ignore-daemonsets
+
+# Get upgrade plan, indicating which version can be used as a target.
+sudo kubeadm upgrade plan
+
+# Run the upgrade.
+sudo kubeadm upgrade apply v1.28.1
+
+# Check the cp node is "Ready,SchedulingDisabled", and version still not shown as upgraded.
+kubectl get node
+
+# Upgrade kubelet and kubectl.
+sudo apt-mark unhold kubelet kubectl
+sudo apt-get install -y kubelet=1.28.1-00 kubectl=1.28.1-00
+sudo apt-mark hold kubelet kubectl
+
+# Restart the daemons, check cp node version upgraded.
+sudo systemctl daemon-reload
+sudo systemctl restart kubelet
+kubectl get node
+
+# Now make the cp available for the schedule (not status SchedulingDisabled).
+kubectl uncordon ip-172-31-44-140.eu-west-3.compute.internal
+kubectl get node
+
+## Update workers Nodes.
+# On worker, update kubeadm.
+sudo apt-mark unhold kubeadm
+sudo apt-get update && sudo apt-get install -y kubeadm=1.28.1-00
+sudo apt-mark hold kubeadm
+
+# On cp node, drain worker.
+kubectl drain ip-172-31-36-187.eu-west-3.compute.internal --ignore-daemonsets
+
+# On worker, upgrade kubelet and kubectl, and restart processes.
+sudo apt-mark unhold kubelet kubectl
+sudo apt-get install -y kubelet=1.28.1-00 kubectl=1.28.1-00
+sudo apt-mark hold kubelet kubectl
+sudo systemctl daemon-reload
+sudo systemctl restart kubelet
+
+# On cp node, check worker status, and enable pod deployment on worker (scheduler).
+kubectl get node
+kubectl uncordon ip-172-31-36-187.eu-west-3.compute.internal
+
+

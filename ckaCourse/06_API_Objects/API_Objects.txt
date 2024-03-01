@@ -1,0 +1,52 @@
+## Stability named as "groups": alpha, beta, v1.
+DaemonSets => apps/v1
+StatefulSets => apps/v1
+Jobs/CronJobs => batch/v1
+Role-Based Access Control (RBAC) => v1
+
+## v1.
+Not single group: storage.k8s.io/v1, rbac.authorization.k8s.io/v1...
+
+# Some objects:
+Node: Machine part of the kubernetes cluster.
+Service Account: An identifier for processes running in a pod to access the API server.
+Resource Quota: Define quotas, for example limit a specific namespace to only run a given number of pods.
+Endpoint: Set of IPs for pods that match a particular service (not manageable, should just check if there is matching pods).
+
+## Discovering API Groups.
+
+
+
+
+
+
+## Deploying an Application.
+Deployment: A controller which manages the state of ReplicaSets and the pods within.
+ReplicaSet: Orchestrates individual pod lifecycle and updates.
+Pod: It runs the application container.
+
+## DaemonSets.
+Using "kind: DaemonSets" in deployment config.
+The controller will ensure a pod runs on each node in the cluster.
+Used for logs and metrics
+kubectl get daemonsets
+kubectl get ds
+
+## StatefulSets.
+The workload API object used to manage stateful applications.
+Consider each pod as unique and provides ordering to Pod deployment.
+
+## Autoscaling.
+Horizontal Pod Autoscalers (HPA): Automatically scale Replication Controllers, ReplicaSets, or Deployments based on a target of 50% CPU usage (by default).
+Cluster Autoscaler (CA): Adds or removes nodes to the cluster, based on the inability to deploy a Pod or having nodes with low utilization.
+
+## Jobs: batch API group.
+Run a set number of pods to completion.
+Can be run in parallel (.spec.concurrencyPolicy Allow|Forbid|Replace).
+
+## Role Based Access Control (RBAC, group rbac.authorization.k8s.io).
+ClusterRole, Role, ClusterRoleBinding, RoleBinding
+
+
+
+

@@ -1,0 +1,38 @@
+### Service Mesh.
+# Install linkerd using their own scripts.
+curl -sL run.linkerd.io/install | sh
+export PATH=$PATH:/home/ubuntu/.linkerd2/bin
+echo "export PATH=$PATH:/home/ubuntu/.linkerd2/bin" >> $HOME/.bashrc
+linkerd check --pre
+linkerd install --crds | kubectl apply -f -
+linkerd install | kubectl apply -f -
+linkerd check
+linkerd viz install | kubectl apply -f -
+linkerd viz check
+linkerd viz dashboard &
+
+# GUI available on localhost by default, edit the service and the deployment to allow outside access (cloud provider).
+# Remove values of -enforced-host (- -enforced-host=).
+kubectl -n linkerd-viz edit deploy web
+# Edit "spec.type: NodePort, add line spec.ports.(- name: http).nodePort: 31500"
+kubectl edit svc web -n linkerd-viz
+
+# Open the GUI.
+http://<publicIp>:31500
+
+# Create new deployment and make linkerd inject an annotation so it will be watched (will display error but working).
+# See resources now meshed in accounting namespace.
+kubectl create -f nginx-one.yaml
+kubectl -n accounting get deploy nginx-one -o yaml | linkerd inject - | kubectl apply -f -
+
+# Generate some trafic on the (service-lab, NodePort), scale up nginx-one, see metrics on GUI.
+kubectl -n accounting scale deploy nginx-one --replicas=5
+
+
+### Ingress Controller.
+# Use Helm to install an ingress controller.
+
+
+
+
+

@@ -1,0 +1,17 @@
+
+
+
+### Check authorisations.
+kubectl auth can-i create deployments
+kubectl auth can-i create deployments --as bob
+kubectl auth can-i create deployments --as bob --namespace developer
+
+
+
+Three APIs which can be applied to set who and what can be queried:
+  - SelfSubjectAccessReview: Access review for any user, helpful for delegating to others.
+  - LocalSubjectAccessReview: Review is restricted to a specific namespace.
+  - SelfSubjectRulesReview: A review which shows allowed actions for a user within a particular namespace.
+
+Command reconcile allows a check of authorization necessary to create an object from a file.
+

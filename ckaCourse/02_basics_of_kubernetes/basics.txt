@@ -1,0 +1,13 @@
+# Basics of Kubernetes
+
+# What is it ?
+Kubernetes: an open-source software for automating deployment, scaling, and management of containerized applications.
+From google (borg).
+
+# Components.
+Micro-service architecture, deploying x small services rather than one monolithic (easier for scaling).
+Transient nature also allows decoupling.
+
+K8s is written in Go, JSON is the format for configuration, but in the fact written in YAML and converted before the
+persistence in the database.
+

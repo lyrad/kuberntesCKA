@@ -1,0 +1,52 @@
+### Basic Troubleshooting Steps.
+Troubleshooting steps:
+ - Command line errors.
+ - State of Pods, Pod logs.
+ - Pod DNS and network (shell).
+ - Node resources allocation, node logs.
+ - Security settings (RBAC, SELinux, AppArmor).
+ - kube-apiserver/controllers API calls.
+ - Auditing (sidecar).
+ - Inter-node network issues (DNS, firewall).
+ - Control Plane server controllers.
+
+# Log in inside a pod/container.
+kubectl exec -ti <busybox_pod> -- /bin/sh
+
+# Pod standard output.
+kubectl logs pod-name
+
+### Ephemeral Containers.
+Add a container to a pod (not restarted automatically) through the ephemeral containers handler.
+kubectl edit is not possible, use kubectl attach to join an existing process within the container (exec = new process).
+kubectl debug buggypod --image debian --attach
+
+### Cluster Start Sequence.
+# Current state and configuration used to run the kubelet binary.
+systemctl status kubelet.service
+/etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+
+### Scheduler.
+Binary settings: /var/lib/kubelet/config.yaml
+staticPodPath: /etc/kubernetes/manifests/
+Create a yaml file in this directory, see if the scheduler read it and create the resource.
+
+### Monitoring and logging.
+Use Prometheus as an integrated metric server for monitoring.
+Use Grafana to visualize the data.
+Kubelet writes container logs to local files (docker logging driver): kubectl logs.
+Use Fluentd to filter/aggregate/transfer logs (runs in a DaemonSet inside each node).
+
+### Manage kubectl plugins.
+Plugins can be added to extend kubectl command: use krew (kubectl plugin manager) to manage them.
+kubectl plugin list
+kubectl krew search
+kubectl krew install tail
+
+### Network Traffic: the sniff plugin (Wireshark).
+# -c option used to declare which container in the pod to use for traffic monitoring.
+kubectl krew install sniff nginx-123456-abcd -c webcont
+
+
+### More resources.
+https://kubernetes.io/docs/tasks/debug/

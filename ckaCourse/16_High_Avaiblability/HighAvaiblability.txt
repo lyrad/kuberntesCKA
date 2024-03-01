@@ -1,0 +1,12 @@
+### Cluster High Availability.
+A cluster may join multiple CP nodes with collocated etcd databases (redundancy in case of CP down).
+3 instances are required to be sure etcd database is not corrupt and elect a leader.
+
+## Collocated Databases.
+Use kubeadm command to join at least 2 more CP servers (same command than worker, with --control-plane flag and a certificate-key options).
+
+## Non-Collocated Databases.
+An external cluster can be used to store etcd database, resulting in less interruption when a node fail.
+
+# Configuration.
+The external etcd cluster needs to be configured first.

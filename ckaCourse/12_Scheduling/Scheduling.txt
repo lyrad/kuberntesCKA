@@ -1,0 +1,150 @@
+### kube-scheduler.
+The kube-scheduler determines which nodes will run a Pod, using a topology-aware algorithm (tracking each node).
+A priority can be set on a pod, allowing preemption of lower priority pods.
+Can be customized using labels / taints / binding.
+"kubectl get events" allows to see scheduler events.
+If the default scheduler mechanisms does not fit the needs, can use/code a custom scheduler.
+
+### Node Selection in kube-scheduler.
+
+## Scheduling stages.
+queueSort/preFilter/filter/postFilter/preScore/score/reserve/permit/preBind/bind/postBind/multiPoint.
+ - Filtering stage: PodFitsResources determines if a Node has sufficient resources available to satisfy a Pod.
+ - Scoring stage: Nodes are rated to determine best pod placement.
+
+## Extension Points (EP).
+Allow to change the state of the scheduler through a plugin.
+Plugins :
+ - queueSort: Ordering function to sort pending pods (only one queueSort plugin enabled at a time).
+ - preFilter: Pre check/process pods before filtering stage (can be marked as unschedulable).
+ - filter: filter out nodes that can't run a pod (= Predicates in a scheduling Policy).
+ - postFilter: When no node was found for a pod, allow to mark it as schedulable.
+ - preScore: Informational extension point for doing pre-scoring work.
+ - score: Provide a score for nodes that passed the filtering stage (higher score selected).
+
+ ## Scheduling Plugins.
+ Plugins enabled by default, implementing one or more EP :
+  - NodeName: Checks if the pod spec "node name" match the node.
+    # EP: filter.
+  - NodePorts: Checks if the pod requested "ports" are free on the node.
+    # EP: filter.
+  - NodeUnschedulable: Checks if the node have the spec "unschedulable" set to true.
+    # EP: filter.
+  - NodeResourcesFit: Checks if the node has all the resources that the Pod is requesting.
+    # EP: filter.
+  - ImageLocality: Favors nodes with pods running the container image.
+    EP: score.
+  - NodeResourcesBalancedAllocation: Favors nodes that would obtain a more balanced resource usage if pod scheduled.
+    # EP: score.
+  - NodeAffinity: Implements node selectors and affinity.
+    # EP: filter, score.
+  - PodTopologySpread: Implements Pod topology spread.
+    EP: preFilter, filter, preScore, score.
+  - TaintToleration: Implements taints and tolerations.
+    # EP: filter, preScore, score.
+
+
+### Scheduling Configuration.
+## Scheduling profiles.
+Allow to configure the different stages/plugins of the scheduler.
+A scheduler configuration can run more than one profile.
+Pods should define the profile that will be used for their scheduling (defaut-scheduler when not set).
+
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+  - schedulerName: default-scheduler
+  - schedulerName: custom-scheduler
+    plugins:
+      preFilter:
+        disabled:
+        - name: '*'
+      filter:
+        disabled:
+        - name: '*'
+      postFilter:
+        disabled:
+        - name: '*'
+
+
+## Pod Specification.
+Scheduling decisions may be may as part of a pod spec:
+ - nodeName and nodeSelector: Assign to a single node or a labeled group of nodes (label key/value).
+ - affinity and anti-affinity: Assign to a preferred node see below Pod Affinity Rules).
+ - taints and tolerations: label a node to not be scheduled (taint), tell a pod to ignore a taint (toleration).
+ - schedulerName: Use a custom scheduler.
+
+# Pod Affinity Rules.
+Rule types: podAffinity (together)|podAntiAffinity (different nodes).
+Rules (! apply on node's pods, not on node itself) :
+ - requiredDuringSchedulingIgnoredDuringExecution: Will stay in pending state if no node matching condition is found.
+ - referredDuringSchedulingIgnoredDuringExecution: Will be deployed even if no node matching condition is found.
+
+The pod will remain in Pending state if no node running pod having a security/S1 label is found.
+The pod will avoid nodes running pods having a security/S2 label.
+Weight allow to sort the different "situations" / "constraints" to be avoided.
+spec:
+  affinity:
+    podAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: security
+            operator: In
+            values:
+            - S1
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: security
+              operator: In
+              values:
+              - S2
+
+# Tolerations.
+Related to Node specifications > Taints.
+Select the node taints to ignore using key/value/operator ("Equal" (default)|"Exists").
+"Exists" should not be used: empty key using "Exists" will tolerate every taint.
+
+The pod will remain on a node with key/value "server"/"ap-east" 3600 seconds before being evacuated.
+tolerations:
+- key: "server"
+  operator: "Equal"
+  value: "ap-east"
+  effect: "NoExecute"
+  tolerationSeconds: 3600
+
+
+## Node specifications.
+# Node Affinity Rules.
+Similar to (and will replace) nodeSelector setting.
+Rule types : nodeAffinity|nodeAntiAffinity(?)
+Rules (! work on node labels rather than other pods labels) :
+ - requiredDuringSchedulingIgnoredDuringExecution: Will stay in pending state if no node matching condition is found.
+ - preferredDuringSchedulingIgnoredDuringExecution: Will be deployed even if no node matching condition is found.
+ - requiredDuringSchedulingRequiredDuringExecution: (future)
+
+The pod will prefer nodes with label diskspeed/(fast|quick).
+ spec:
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 1
+        preference:
+          matchExpressions:
+          - key: diskspeed
+            operator: In
+            values:
+            - quick
+            - fast
+
+# Taints.
+A node with a particular taint will repel Pods without tolerations for that taint.
+Specification : key=value:effect
+Effects :
+  - NoSchedule: No new pod will be scheduled on this node, but existing ones left running.
+  - PreferNoSchedule: No new pod will be scheduled on this node as far as no other node available. Existing ones left running.
+  - NoExecute: Pods not tolerating the taint will be evacuated, and no future pod scheduled (see tolerationSeconds).

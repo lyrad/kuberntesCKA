@@ -1,0 +1,154 @@
+### Accessing the API.
+3 Steps (request encrypted using TLS) :
+ - Authentication (token).
+ - Authorization (RBAC): Request is checked against existing policies.
+ - Admission Controllers: Check and validate request content (object) before admitting the request.
+
+## Authentication.
+Done with certificates, tokens, basic authentication, webhook checking bearer tokens or external OpenID provider).
+User not managed through API but by an external system.
+Processes use System accounts to access the API.
+
+# kube-apiserver configuration startup options.
+--basic-auth-file, --oidc-issuer-url, --token-auth-file, --authorization-webhook-config-file.
+
+# Authenticator Modules used.
+x509 Client Certs, static or bearer token, password file, service account, OpenID connect tokens.
+
+
+## Authorization.
+Authorization modes: RBAC, Webhook.
+Global Settings: Deny/Allow
+
+# kube-apiserver configuration startup options.
+--authorization-mode=RBAC, --authorization-mode=Webhook, --authorization-mode=AlwaysDeny, --authorization-mode=AlwaysAllow
+
+# RBAC authorization mode.
+Rules are operations acting upon an API group, applying on:
+ - User Accounts (not an API object).
+ - Service Accounts.
+ - Groups (clusterrolebinding).
+Roles are a group of rules which scope a namespace (ClusterRoles: entire cluster).
+Roles are used to configure associations of apiGroups/resources (with the verbs allowed to them).
+
+Process:
+ - Determine or create namespace.
+ - Create certificate credentials for user.
+ - Set the credentials for the user to the namespace using a context.
+ - Create a role for the expected task set.
+ - Bind the user to the role.
+ - Verify the user has limited access.
+
+# Webhook authorization mode.
+HTTP callback. A HTTP POST request will be sent when something happens.
+
+
+## Admission Controllers.
+Controllers that can access the content of an object being created (modify, validate...).
+
+# kube-apiserver configuration startup options.
+--enable-admission-plugins=Initializers,NamespaceLifecycle,LimitRanger
+--disable-admission-plugins=PodNodeSelector
+
+# Examples:
+Initializers: Dynamic modification of the API requests.
+ResourceQuota: Ensure object created does not violate existing quotas.
+
+
+### Security Contexts.
+Security constraint limiting the rights of container processes.
+Defined for an entire pod, or per container.
+
+# Example: The pod containers can't run as root.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+spec:
+  securityContext:
+    runAsNonRoot: true
+  containers:
+  - image: nginx
+    name: nginx
+
+## Pod Security Policies (PSP).
+! Deprecated and removed in 1.25 (replaced by Pod Security Admission).
+Automate the enforcement of security contexts.
+Cluster level rule that govern what a pod can do/access...
+Very effective when coupled with RBAC.
+
+# Example.
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: restricted
+spec:
+  seLinux:
+    rule: RunAsAny
+  supplementalGroups:
+    rule: RunAsAny
+  runAsUser:
+    rule: MustRunAsNonRoot
+  fsGroup:
+    rule: RunAsAny
+
+## Network Security Policies.
+Allow to configure network isolation (by default, all pods can reach each others).
+Can select pods by name, label or namespace.
+Network policies not supported by all network plugins (work with Calico).
+
+# Example.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ingress-egress-policy
+  namespace: default
+spec:
+  podSelector:
+    # May also include complex matchExpressions.
+    # matchExpressions:
+    # {key: inns, operator: In, values: ["yes"]}
+    matchLabels:
+      # Pod label selector.
+      role: db
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Block all incoming traffic from 172.17.0.0/16, except from 172.17.1.0/24.
+    - from:
+        - ipBlock:
+            cidr: 172.17.0.0/16
+            except:
+              - 172.17.1.0/24
+        - namespaceSelector:
+            matchLabels:
+              # Pod namespace's label selector.
+              project: myproject
+        - podSelector:
+            matchLabels:
+              # Additional pod label selector.
+              role: frontend
+      ports:
+        - protocol: TCP
+          port: 6379
+  egress:
+    # Block all external traffic to 10.0.0.0/24, port TCP 5978.
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/24
+      ports:
+        - protocol: TCP
+          port: 5978
+
+
+# Default Policy Example: Will not allow any ingress traffic.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  # Match all pods.
+  podSelector: {}
+  policyTypes:
+  - Ingress

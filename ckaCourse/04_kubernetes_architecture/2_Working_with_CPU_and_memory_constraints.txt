@@ -1,0 +1,42 @@
+# Working with resource limits.
+
+# Create a stress container.
+kubectl create deployment hog --image vish/stress
+kubectl describe deployment hog
+
+# Get deployment YAML, see there is no resource limit.
+kubectl get deployment hog -o yaml
+
+# Update YAML file resource section.
+resources:
+  limits:
+    memory: "4Gi"
+  requests:
+    memory: "2500Mi"
+
+# Replace deployment, check resource section was updated.
+kubectl replace -f hog.yaml
+kubectl get deployment hog -o yaml
+
+# Get container name and notes allocated memory.
+kubectl get po
+ kubectl logs hog-555947b84b-kjc9t
+
+# Add arg section (same level as resources) to make the stress container consume resources.
+args:
+- -cpus
+- "2"
+- -mem-total
+- "950Mi"
+- -mem-alloc-size
+- "100Mi"
+- -mem-alloc-sleep
+- "1s"
+
+kubectl delete deployment hog
+kubectl create -f hog.yaml
+
+# top will show increased resources for stress on the worker it is running on.
+
+
+

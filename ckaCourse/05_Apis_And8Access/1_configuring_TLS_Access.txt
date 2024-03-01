@@ -1,0 +1,20 @@
+### Exécuter des commandes sur le cluster via l'API.
+
+# --cert et --key sont les paramètres de l'utilisateur (section users fichier de config) --cacert section cluster.
+# Il faut les encoder en base64 avant de les utiliser avec CURL: echo $client | base64 -d - > ./client.pem
+
+# List pods.
+curl --cert ./client.pem \
+  --key ./client-key.pem \
+  --cacert ./ca.pem \
+  https://k8scp:6443/api/v1/pods
+
+# Create new pod.
+curl --cert ./client.pem --key ./client-key.pem --cacert ./ca.pem https://k8scp:6443/api/v1/namespaces/default/pods -XPOST -H'Content-Type: application/json' -d@newpod.json
+
+
+
+
+curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+
+apt-get update && apt-get install -y kubeadm=1.27.1-00 kubelet=1.27.1-00 kubectl=1.27.1-00

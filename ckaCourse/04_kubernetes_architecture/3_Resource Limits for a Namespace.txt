@@ -1,0 +1,41 @@
+# Creating a new namespace.
+kubectl create namespace low-usage-limit
+kubectl get namespace
+
+# Create a new LimitRango YAML object/file.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: low-resource-range
+spec:
+  limits:
+  - default:
+      cpu: 1
+      memory: 500Mi
+    defaultRequest: 1
+      cpu: 0.5
+      memory: 100Mi
+    type: Container
+
+# Apply it to namespace.
+kubectl --namespace=low-usage-limit create -f low-resource-range.yaml
+
+# Verify it works: No LimitRange object in default namespace.
+kubectl get LimitRange
+kubectl get LimitRange --all-namespaces
+
+# Create new deployment in namespace.
+kubectl -n low-usage-limit create deployment limited-hog --image vish/stress
+kubectl get deployments --all-namespaces
+
+# Get all pods in the namespace, and get pod details. Observe pod inherited limit namespace configuration.
+kubectl -n low-usage-limit get pods
+kubectl -n low-usage-limit get pod limited-hog-66d5cd76bc-rz8q7 -o yaml
+
+# Deploy a new hog in the created namespace, observe with top the two stress containers (in different namespaces).
+kubectl create -f hog2.yaml
+kubectl get deployments --all-namespaces
+
+# Remove deployments.
+kubectl -n low-usage-limit delete deployment hog
+kubectl delete deployment hog

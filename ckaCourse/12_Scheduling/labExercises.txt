@@ -1,0 +1,97 @@
+### Assign Pods Using Labels.
+# See labels and taints on nodes.
+kubectl get nodes --show-labels
+kubectl describe nodes | grep -A5 -i label
+kubectl describe nodes | grep -i taint
+
+# Count running container on a node (do not work on worker?).
+sudo crictl ps | wc -l
+
+# Label the nodes for the exercise.
+kubectl label nodes ip-172-31-44-140.eu-west-3.compute.internal status=vip
+kubectl label nodes ip-172-31-36-187.eu-west-3.compute.internal status=other
+
+# Create a pod with busybox containers.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vip
+spec:
+  containers:
+  - name: vip1
+    image: busybox
+    args:
+    - sleep
+    - "1000000"
+  - name: vip2
+    image: busybox
+    args:
+    - sleep
+    - "1000000"
+  - name: vip3
+    image: busybox
+    args:
+    - sleep
+    - "1000000"
+  - name: vip4
+    image: busybox
+    args:
+    - sleep
+    - "1000000"
+  nodeSelector:
+    status: vip
+
+kubectl create -f vip.yaml
+
+# Observe containers deployed on CP (label status/vip) and delete the pod.
+kubectl get pods -o wide
+kubectl delete pod vip
+
+# Change the nodeSelector constraint (worker node label, ), recreate and observe pod deployed on worker node.
+kubectl get pods -o wide
+kubectl delete pod vip
+
+
+### Using Taints to Control Pod Deployment.
+
+# Create a deployment, see pods where deployed on both nodes.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taint-deployment
+spec:
+  replicas: 8
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name:  nginx
+        image: nginx:1.20.1
+        ports:
+        - containerPort: 80
+
+kubectl apply -f taint.yaml
+kubectl get pods -o wide
+kubectl delete deployment taint-deployment
+
+# Add a bubba=value:NoSchedule|PreferNoSchedule on worker node, see no|less pods are deployed on CP node.
+kubectl taint nodes worker bubba=value:PreferNoSchedule
+kubectl describe node | grep Taint
+kubectl apply -f taint.yaml
+kubectl get pods -o wide
+kubectl delete deployment taint-deployment
+
+# Delete taint on the worker node.
+kubectl taint nodes ip-172-31-36-187.eu-west-3.compute.internal bubba-
+kubectl describe node | grep Taint
+
+# Add a bubba=value:NoExecute taint, observe pods are moved from CO to worker after a while.
+kubectl apply -f taint.yaml
+kubectl taint nodes worker bubba=value:NoExecute
+kubectl get pods -o wide
+kubectl delete deployment taint-deployment

@@ -1,0 +1,161 @@
+### Working with ReplicaSets.
+
+# Create a replicaset yaml file.
+# apiVersion: apps/v1
+# kind: ReplicaSet
+# metadata:
+#   name: rs-one
+# spec:
+#   replicas: 2
+#   selector:
+#     matchLabels:
+#       system: ReplicaOne
+#   template:
+#     metadata:
+#       labels:
+#         system: ReplicaOne
+#     spec:
+#       containers:
+#       - name: nginx
+#         image: nginx:1.15.1
+#         ports:
+#         - containerPort: 80
+
+kubectl get rs
+kubectl describe rs rs-one
+kubectl get pods
+
+# Delete the replicaset itself, but not the pods it controls.
+kubectl delete rs rs-one --cascade=orphan
+kubectl describe rs rs-one
+kubectl get pods
+
+# Recreate the ReplicaSet. Since the selector did not change, it will take ownership over the running orphan pods.
+kubectl create -f rs.yaml
+# See the age and the associated pods.
+kubectl get rs
+kubectl get pods
+
+# Isolate a pod changing its label (labels: system: IsolatedPod).
+kubectl edit pod <podName>
+# Observe still 2 pods running in the ReplicaSet.
+kubectl get rs
+# Observe 3 rs-one pods running. The ReplicaSet ensures there are 2 pods in the ReplicaOne system label.
+kubectl get po -L system
+
+# Delete the Replicaset and observe the isolated pod is still running, then delete it.
+kubectl delete rs rs-one
+kubectl get po
+kubectl delete pod -l system=IsolatedPod
+
+
+### Working with Deployments.
+# Create a deployment yaml file (generated).
+kubectl create deploy webserver --image nginx:1.22.1 --replicas=2 --dry-run=client -o yaml | tee dep.yaml
+kubectl create -f dep.yaml
+kubectl get deploy
+# Check the image running a pod.
+kubectl describe pod webserver-5fbfb6dcdb-vfdnv  | grep Image:
+
+
+### Rolling Updates and Rollbacks using Deployment.
+# Get the current deployment strategy section.
+kubectl get deploy webserver -o yaml | grep -A 4 strategy
+
+# Edit this section, change to type: Recreate, remove the rollingUpdate section.
+# Allow the manual termination of some of the pods (will result in image update when recreated).
+kubectl edit deploy webserver
+
+# Update deployment, change the image, observe pods recreated, image changed and 2 revisions in history.
+kubectl get pod
+kubectl set image deploy webserver nginx=nginx:1.23.1-alpine
+kubectl rollout history deploy webserver
+# Observe image difference in listed revisions.
+kubectl rollout history deploy webserver --revision=1
+kubectl rollout history deploy webserver --revision=2
+
+# Undo the change using rollout undo.
+kubectl rollout undo deploy webserver
+kubectl get pod
+kubectl describe pod webserver-6cbc654ddc-7wb5q |grep Image:
+kubectl delete deploy webserver
+
+
+### Working with DaemonSets.
+# apiVersion: apps/v1
+# kind: DaemonSet
+# metadata:
+#   name: ds-one
+# spec:
+#   selector:
+#     matchLabels:
+#       system: DaemonSetOne
+#   template:
+#     metadata:
+#       labels:
+#         system: DaemonSetOne
+#     spec:
+#       containers:
+#       - name: nginx
+#         image: nginx:1.15.1
+#         ports:
+#         - containerPort: 80
+
+kubectl create -f ds.yaml
+# ??? Only one, nothing deployed on CP ??? matchLabel system ???
+# Yeap, taint NoSchedule on master node, remove (- at the end).
+# kubectl taint nodes ip-172-31-44-140.eu-west-3.compute.internal node-role.kubernetes.io/control-plane:NoSchedule-
+kubectl get daemonset ds-one
+kubectl get pod
+# Get running image.
+kubectl describe pod ds-one-k6svq | grep Image:
+
+
+### Rolling Updates and Rollbacks using DaemonSet.
+## OnDelete strategy.
+# Get current updateStrategy setting for the DaemonSet.
+kubectl get ds ds-one -o yaml | grep -A 4 Strategy
+
+# Edit daemonSet config to set the updateStrategy type to "OnDelete".
+kubectl edit ds ds-one
+# Update the image running in the ds pods, check image is unchanged, delete the pod and check newly created pod image changed.
+kubectl set image ds ds-one nginx=nginx:1.16.1-alpine
+kubectl describe po ds-one-h489g |grep Image:
+kubectl delete po ds-one-h489g
+
+# Check rollout history and revisions, observe the image change.
+kubectl rollout history ds ds-one
+kubectl rollout history ds ds-one --revision=1
+kubectl rollout history ds ds-one --revision=2
+
+# Undo the image update using rollout undo. Since OnDelete strategy, no update, check.
+kubectl rollout undo ds ds-one --to-revision=1
+kubectl describe po ds-one-xtw5r |grep Image:
+
+# Delete the pod, check image is updated (rolled back to first version).
+kubectl delete pod ds-one-xtw5r
+kubectl describe po ds-one-89662 |grep Image:
+
+## RollingUpdate strategy.
+# Create a new daemonSet from the existing one, change name (to ds-two) and updateStrategy (to RollingUpdate).
+kubectl get ds ds-one -o yaml  > ds2.yaml
+kubectl create -f ds2.yaml
+kubectl get pod
+
+# Edit ds-two configuration, update image, check pods and their container images are updated.
+kubectl edit ds ds-two
+kubectl get ds ds-two
+kubectl get pod
+kubectl describe po ds-two-bpmtr |grep Image:
+
+# Check rollout status and history, undo image update through rollout history, check rollout history.
+kubectl rollout status ds ds-two
+kubectl rollout history ds ds-two --revision=1
+kubectl rollout history ds ds-two --revision=2
+kubectl rollout undo ds ds-two --to-revision=1
+kubectl rollout history ds ds-two
+kubectl rollout history ds ds-two --revision=2
+kubectl rollout history ds ds-two --revision=3
+
+# Delete daemonSets.
+kubectl delete ds ds-one ds-two

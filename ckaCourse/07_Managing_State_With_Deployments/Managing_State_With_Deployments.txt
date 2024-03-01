@@ -1,0 +1,152 @@
+## ReplicationControllers (RC) :
+ - Ensure that a specified number of pod replicas is running at any one time.
+ - Allow to perform rolling updates (managed on client side).
+=> Problem if the client loose connectivity, so Deployment generate server-side ReplicaSets (and more).
+
+A replicaSet is a controller ensuring a certain number of pods is running (Pod are all deployed using the same podSpec).
+
+
+## Deployments.
+# Get deployment details:
+kubectl get deployments,rs,pods -o yaml
+
+
+## Deployment configuration.
+# Deployment metadata.
+labels: allow to select/exclude objects outside of typical object boundaries.
+name: required, must be unique to the namespace.
+generation: The number of times the resource was edited.
+resourceVersion: tied to etcd database, any change to the object will cause this value to change too (concurrency).
+uid: unique id for the life of an object.
+annotations: provide further information that could be used to a third-party app. Cannot be used to select object through kubectl.
+
+
+# Deployment spec.
+# 2 specs, one to update the created replicaset, the other one passed to the pod.
+# spec:
+#  progressDeadlineSeconds: 600
+#  replicas: 1
+#  revisionHistoryLimit: 10
+#  selector:
+#    matchLabels:
+#      app: dev-web
+#  strategy:
+#    rollingUpdate:
+#      maxSurge: 25%
+#      maxUnavailable: 25%
+#    type: RollingUpdate
+progressDeadlineSeconds: time before an error is reported during a change (quotas, image issues, limit ranges...).
+replicas: number of pods being created.
+revisionHistoryLimit: how many "old" specification to remember for a rollback.
+selector: A collection of values that must all be satisfied for the replica to match.
+matchLabels: Pod selector requirements (often found with the matchExpressions statement).
+strategy: header value for pod update (work with "type"). "Recreate" (re-created), "RollingUpdate"...
+type: type of strategy used.
+maxsurge: number (or %) of new pod to be created before deleting the old ones.
+maxUnavailable: number (or %) of pods that can have a state other than "Ready" during deployment.
+
+
+# Deployment configuration Pod Template.
+# template:
+#  metadata:
+#    creationTimestamp: null
+#    labels:
+#      app: dev-web
+#  spec:
+#    containers:
+#    - image: nginx:1.17.7-alpine
+#      imagePullPolicy: IfNotPresent
+#      name: dev-web
+#      resources: {}
+#      terminationMessagePath: /dev/termination-log
+#      terminationMessagePolicy: File
+#    dnsPolicy: ClusterFirst
+#    restartPolicy: Always
+#    schedulerName: default-scheduler
+#    securityContext: {}
+#    terminationGracePeriodSeconds: 30
+
+template: Data passed to the ReplicaSet to deploy an object (here, containers).
+containers: Containers specifications.
+image: Image name for the container engine.
+imagePullPolicy: Passed to the container engine, should the image be downloaded or used from local cache.
+name: The stub for the pod name.
+terminationMessagePath: Where to output container success/failure information.
+terminationMessagePolicy: "File" (default), "FallbackToLogsOnError" (last part of container log).
+dnsPolicy: target of DNS query, "Default" (node's DNS config), "coredns".
+restartPolicy: Should the container be restarted if killed
+scheduleName: Set the scheduler.
+securityContext: Additional values to pass to the container (users UID...).
+terminationGracePeriodSecond: Time to wait for a SIGTERM to run until a SIGKILL is used to terminate the container.
+
+
+# Deployment Configuration Status.
+# status:
+#  availableReplicas: 2
+#  conditions:
+#  - lastTransitionTime: 2022-12-21T13:57:07Z
+#    lastUpdateTime: 2022-12-21T13:57:07Z
+#    message: Deployment has minimum availability.
+#    reason: MinimumReplicasAvailable
+#    status: "True"
+#    type: Available
+#  - lastTransitionTime: "2021-07-29T06:00:24Z"
+#    lastUpdateTime: "2021-07-29T06:00:33Z"
+#    message: ReplicaSet "test-5f6778868d" has successfully progressed.
+#    reason: NewReplicaSetAvailable
+#    status: "True"
+#    type: Progressing
+#  observedGeneration: 2
+#  readyReplicas: 2
+#  replicas: 2
+#  updatedReplicas: 2
+
+availableReplicas: Number of pods configured by the ReplicaSet (see readyReplicas).
+observedGeneration: Number of times deployment has been updated.
+
+
+
+
+## Scaling, Rolling Updates, Rollbacks.
+# Scale the number of replicas.
+kubectl scale deploy/dev-web --replicas=4
+
+# Edit configuration through text-editor (will trigger a rolling update).
+kubectl edit deployment dev-web
+
+# Deploy a pod, wrong image name (CrashLoopBackOff), edit a config value still possible.
+kubectl create deploy ghost --image=ghost
+kubectl annotate deployment/ghost kubernetes.io/change-cause="kubectl create deploy ghost --image=ghost"
+kubectl get deployments ghost -o yaml
+kubectl get pods
+
+# Update image (ImagePullBackOff).
+kubectl set image deployment/ghost ghost=ghost:09 --all
+kubectl get pods
+
+# Undo deployment (--to-revision=2 choose the revision).
+kubectl rollout undo deployment/ghost
+
+# Pause / Resume a deployment.
+kubectl rollout pause deployment/ghost
+kubectl rollout resume deployment/ghost
+
+# Delete a deployment.
+kubectl delete <deploymentName>
+
+## Labels:
+Deployment labels are immutable since (apps/v1).
+Default labels are added by kubectl create.
+Could be used to force deployment on a specific node (label the node, use the value in nodeSelector deployment spec).
+# labels:
+#   pod-template-hash: "3378155678"
+#   run: ghost
+
+# Select pods based on deployment label (value, key).
+kubectl get pods -l run=ghost
+kubectl get pods -L run
+
+# Define and show label
+kubectl label pods ghost-3378155678-eq5i6 foo=bar
+kubectl get pods --show-labels
+

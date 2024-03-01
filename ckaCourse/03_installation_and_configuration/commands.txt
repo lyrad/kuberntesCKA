@@ -1,0 +1,34 @@
+## Create cluster
+# Initialisation.
+kubeadm init --config=kubeadm-config.yaml --upload-certs
+
+
+# Nodes.
+kubectl get node
+kubectl describe node <name>
+
+# Pods.
+kubectl get pod
+kubectl get pods --all-namespaces -o wide
+kubectl -n <namespace> delete pod <name>
+
+# Events.
+kubectl get events
+kubectl cluster-info dump | grep LoadBalancer
+
+# Deployments.
+kubectl get deployments
+kubectl get deployment <name> -o yaml
+kubectl describe deployment <name>
+kubectl create deployment <name> --image=<image>
+kubectl replace -f <file> --force
+kubectl expose <name>
+kubectl scale deployment <name> --replicas=<number>
+
+# Services.
+kubectl get svc
+kubectl delete svc
+# Delete service.
+
+# Endpoints.
+kubectl get ep

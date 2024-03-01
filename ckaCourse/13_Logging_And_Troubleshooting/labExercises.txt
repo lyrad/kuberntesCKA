@@ -1,0 +1,55 @@
+### Log File Locations And Viewing.
+
+## Node perspective.
+# Use journalctl to view logs (systemd based cluster).
+journalctl -u kubelet | less
+journalctl -u kubelet | tail -100
+
+# If not systemd cluster.
+api-server: /var/log/kube-api-server.log
+scheduler: /var/log/kube-scheduler.log
+controller-manager: /var/log/kube-controller-manager.log
+
+# On worker node (not systemd cluster).
+Kubelet (running containers on the node): /var/log/kubelet.log
+Load balancing: /var/log/kube-proxy.log
+
+## Pod/container perspective.
+# Find the log file of a pod/container.
+sudo find / -name "*apiserver*log"
+# Have a log on the file.
+sudo less <lofFilePath>
+
+Various container logs: /var/log/containers/
+Various pod logs: /var/log/pods/
+
+# View pod logs (autocompletion available after "logs" for pod name).
+kubectl get po --all-namespaces
+kubectl -n kube-system logs coredns-5d78c9869d-nbmsh
+kubectl -n accounting logs nginx-one-64fb89d969-22sv8
+
+
+### Adding metrics.
+git clone \https://github.com/kubernetes-incubator/metrics-server.git
+cd metrics-server/ ; less README.md
+kubectl create -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+kubectl -n kube-system get pods
+
+# Allow insecure TLS, edit metrics-server and add conf spec.template.spec.containers.0.args.
+kubectl -n kube-system edit deployment metrics-server
+# - --kubelet-insecure-tls
+# - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
+
+# Check pods are running.
+kubectl -n kube-system logs metrics-server-69495c899c-km7ls
+
+# Check metrics working by viewing pod and node metrics.
+kubectl top pod --all-namespaces
+kubectl top nodes
+# Request the QPI server.
+curl --cert ./client.pem --key ./client-key.pem --cacert ./ca.pem https://k8scp:6443/apis/metrics.k8s.io/v1beta1/nodes
+
+## Configure the kubernetes-dashboard Dashboard.
+# ToDo.
+
+

@@ -1,0 +1,56 @@
+### Services.
+## Overview.
+Services are objects which declare a policy to access a logical set of Pods.
+They are typically assigned with labels to allow persistent access to a resource, when front or back end containers are terminated and replaced.
+
+
+## Service Update Pattern.
+Labels are used to determine which pods should receive trafic.
+By default, rolling update, so new pods with "current" labels are deployed (2 versions of the app in the same time).
+But possibly new label, with no trafic, then shift version.
+
+## Accessing an Application with a Service (NodePort).
+kubectl expose deployment/nginx --port=80 --type=NodePort
+kubectl get svc
+# Will give the port number, service will be available at "nodePublicIP:portNumber".
+kubectl get svc nginx -o yaml
+
+
+### Service Types.
+ServiceTypes:
+  - ClusterIP (default): Exposes on a cluster-internal IP. Only reachable within cluster.
+  - NodePort: Exposes node IP at a static port. A ClusterIP is also automatically created.
+    Useful for debugging. NodePort range defined in cluster config.
+  - LoadBalancer: Exposes service externally using cloud providers load balancer. NodePort and ClusterIP automatically created.
+    An async request is sent, if a listener (public cloud) sees it, will create a LoadBalancer, otherwise status Pending.
+  - ExternalName: Maps service to contents of externalName using a CNAME record.
+
+
+A service is an operator running into the kube-controller-manager.
+The kube-controller-manager sends APi calls to the Network Plugin and the kube-proxy pods (running all node), through the kube-apiserver.
+The Service operator also creates an Endpoint operator, which queries for the ephemeral IP addresses of pods with a particular label.
+All agents manage iptables rules.
+
+### Service Diagram.
+
+### Overall Network View.
+
+### Local Proxy for Development.
+# Create a local proxy capturing the shell (except when background). Use it to call service on localhost and reach cluster IP.
+kubectl proxy
+
+### DNS.
+Provided as CoreDNS by default.
+Clients access it using a service (kube-dns).
+
+### Verifying DNS Registration.
+1) Run a pod with a shell and network tools in the cluster.
+2) Create a service to connect to the pod.
+3) Exec in it to do a DNS lookup.
+
+# Troubleshooting.
+Check the /etc/resolv.conf
+Check Network Policies and firewalls.
+nslookup, dig, nc, wireshark
+
+

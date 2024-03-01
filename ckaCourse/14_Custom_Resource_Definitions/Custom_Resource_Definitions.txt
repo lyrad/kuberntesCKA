@@ -1,0 +1,80 @@
+### Custom Resources.
+Add custom resources (objects or operators) to the cluster:
+ - Adding a Custom Resource Definition (CRD) to the cluster: Not very flexible.
+ - Use of Aggregated APIs (AA): Requires a new API server to be written and added to the cluster.
+ - ThirdPartyResource (TPR): deprecated since 1.8.
+
+### Custom Resource Definitions (CRD).
+Same respond to REST requests, configuration storage/validation and protection rules than built-in objects.
+
+
+## Configuration Example.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: backups.stable.linux.com
+spec:
+  group: stable.linux.com
+  versions: v1
+  scope: Namespaced
+  names:
+    plural: backups
+    singular: backup
+    shortNames:
+    - bks
+    kind: BackUp
+
+apiVersion: apiextensions.k8s.io/v1.
+metadata.name: Must match spec.names.plural and spec.plural declarations. "<pluralName>.<group>".
+spec.group: Part of REST API declaration (/apis/<group>/<version>/<plural>).
+scope: In a namspace (Namespaced) or for the cluster (Cluster).
+plural: Part of REST API declaration (ex: /apis/stable/v1/backups).
+singular, shortNames: For CLI usage.
+kind: For resource manifests usage, CamelCased singular.
+
+
+## New Object Configuration.
+When syntax does not match the expected values, an error is raised (when validation configured).
+
+apiVersion: "stable.linux.com/v1"
+kind: BackUp
+metadata:
+  name: a-backup-object
+spec:
+  timeSpec: "* * * * */5"
+  image: linux-backup-image
+replicas: 5
+
+apiVersion and kind: Match the defined CRD.
+spec: Depends on the controller.
+
+
+## Optional Hooks.
+# Finalizers.
+Pre-delete hook that trigger actions prior to object deletion (in addition to metadata.deletionTimestamp update).
+
+metadata:
+  finalizers:
+  - finalizer.stable.linux.com
+
+# Validation.
+Allows to validate CRD syntax.
+
+validation:
+  openAPIV3Schema:
+    properties:
+      spec:
+        properties:
+          timeSpec:
+            type: string
+            pattern: '^(\d+|\*)(/\d+)?(\s+(\d+|\*)(/\d+)?){4}$'
+          replicas:
+            type: integer
+            minimum: 1
+            maximum: 10
+
+
+### Aggregated APIs.
+Allows to add a kubernetes type API server (subordinated to the kube-apiserver) to the cluster.
+Enable: Add flag in the kube-apiserver start (--enable-aggregator-routing=true).
+

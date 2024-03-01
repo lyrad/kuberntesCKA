@@ -1,0 +1,101 @@
+### RESTful API Access.
+# Get api endpoint and export bearer token for API access.
+kubectl config view
+export token=$(kubectl create token default)
+curl https://k8scp:6443/apis --header "Authorization: Bearer $token" -k
+# Forbidden: systemServiceAccount does not have RBAC authorizations.
+curl https://k8scp:6443/api/v1/namespaces --header "Authorization: Bearer $token" -k
+
+# Access to the API through certificate (so a pod can use the API).
+# In /var/run/secrets/kubernetes.io/serviceaccount/, should be a ca.crt file, and a token file.
+# Test with a random container (-i -t start a shell, stop container on exit).
+student@cp: ̃$ kubectl run -i -t busybox --image=busybox --restart=Never
+kubectl delete pod busybox
+
+
+### Using the proxy.
+# Run a proxy (listening the lo address) pod inside a node or a pod (sidecar) to access the API server.
+# kubectl proxy -h will show all the options.
+# Start a proxy on host, will display the <processId>.
+kubectl proxy --api-prefix=/ &
+# Access the API, the namespace listing is working (the proxy is making the request).
+curl http://127.0.0.1:8001/api/
+curl http://127.0.0.1:8001/api/v1/namespaces
+# Terminate the proxy.
+kill <processId>
+
+
+### Working with Jobs.
+# Create a simple job running a container which sleeps for 3 seconds then stops, describe, export and delete it.
+# apiVersion: batch/v1
+# kind: Job
+# metadata:
+#   name: sleepy
+# spec:
+#   template:
+#     spec:
+#       containers:
+#       - name: resting
+#         image: busybox
+#         command: ["/bin/sleep"]
+#         args: ["3"]
+#       restartPolicy: Never
+
+kubectl create -f job.yaml
+kubectl get job
+kubectl describe jobs.batch sleepy
+kubectl get jobs.batch sleepy -o yaml
+kubectl delete jobs.batch sleepy
+
+# Adding "completions: 5" in job spec, create the job and observe "COMPLETIONS x/5", and the associated pods "Completed".
+kubectl create -f job.yaml
+kubectl get jobs.batch
+kubectl get pods
+kubectl delete jobs.batch sleepy
+
+# Adding "parallelism: 2" in job spec, observe jobs are executed 2 by 2.
+kubectl get pods
+kubectl get jobs
+kubectl delete jobs.batch sleepy
+
+# Adding "activeDeadlineSeconds: 15" in job spec will stop the job after 15 seconds.
+# Also change args["5"] to be sure job not finishing by itself before the 15 seconds.
+# Observe the job is finished at COMPLETIONS 2/5 or 3/5, and the status section in job yaml.
+kubectl create -f job.yaml
+kubectl get jobs
+kubectl get job sleepy -o yaml
+kubectl delete jobs.batch sleepy
+
+
+### Create a CronJob.
+# apiVersion: batch/v1
+# kind: CronJob
+# metadata:
+#   name: sleepy
+# spec:
+#   schedule: "*/2 * * * *"
+#   jobTemplate:
+#     spec:
+#       template:
+#         spec:
+#           containers:
+#           - name: resting
+#             image: busybox
+#             command: ["/bin/sleep"]
+#             args: ["5"]
+#           restartPolicy: Never
+
+
+
+# Observe a job is executed every 2 minutes.
+kubectl create -f cronJob.yaml
+kubectl get cronJobs.batch
+kubectl get jobs.batch
+kubectl delete cronJobs.batch sleepy
+
+# Update job template, set "args: ["30"]" and "activeDeadlineSeconds: 10".
+# Observe the job is created every 2 minutes and stop after 10 seconds due to the timer (?).
+kubectl create -f cronJob.yaml
+kubectl get jobs
+kubectl get cronjobs.batch
+kubectl delete cronjobs.batch sleepy

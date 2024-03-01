@@ -1,0 +1,119 @@
+# Control Plane Node Components
+kubelet process managed by systemd.
+Pods configuration are stored into /etc/kubernetes/manifests/.
+
+kube-apiserver:
+  - Act as a cp process for the cluster, and as the frontend for the cluster shared state.
+  - Handle all calls and actions are accepted and validated by this agent.
+  - Only connection point to the etcd database.
+kube-scheduler:
+  - Decide on which node a pod should be deployed depending on pod configuration (taints, and toleration, metadata...)
+    and available resources using an algorythm.
+etcd Database:
+  - Keep persistent information (cluster's state, networking...) in a b+tree key-value store.
+  - Data are appended at the end, previous are marked for removal.
+  - All request go through the kube-apiserver who will return a 409 in case of simultaneous requests (based on a version parameter).
+  - Leader/followers/non voting learners?
+  - etcd should be protected and secured (not decoupled as other services): etcdctl snapshot save/restore.
+kube-controller-manager:
+  - A core control loop daemon interacting with the kube-apiserver to determine the state of the cluster.
+cloud-controller-manager (ccm):
+  - Optional agent handling kube-controller-manager tasks related to external resources.
+  - When used each kubelet should pass the --cloud-provider-external option to the binary.
+Other Agents:
+  - The network plugin use various pods to control network traffic.
+  - The CoreDNS server handle DNS queries and k8s service discovery.
+
+
+# Worker nodes
+Runs the kubelet, kube-proxy, and the container engine.
+kubelet
+  - Interact with the container engine checking that containers are effectively running.
+
+kube-proxy
+  - Manages the network connectivity to the containers, using iptqbles entries.
+  - userspace mode : monitors services and endpoints using a random port to proxy traffic via ipvs.
+
+Monitoring
+  - Supervisord is a process monitor that can be used to monitor kubelet and docker processes in a In non-systemd cluster.
+  - Fluentd provides a unified logging layer for the cluster (no built in component so far).
+  - Prometheus provides additional metrics (only node/pod CPU and memory utilization provided by metrics-server SIG).
+
+
+# Kubelet
+Systemd process responsive for changing configuration on the worker nodes.
+  - Uses PodSpec.
+  - Mounts volumes to Pod.
+  - Downloads secrets.
+  - Passes request to local container engine.
+  - Reports status of Pods and node to cluster.
+
+
+# Operators (controllers or watch-loops).
+Many available, such as :
+ - Informer
+ - SharedInformer
+ - Workqueue
+ - endpoints
+ - namespace
+ - serviceaccounts
+
+
+
+
+
+
+# Service Operator
+Connects resources together and reconnect if something dies.
+  - Listens to the endpoint operator to provide a persistent IP for Pods.
+  - Sends messages via the kube-apiserver which forwards settings to kube-proxy on every node.
+  - Handle access policies for inbound requests.
+Connect Pods together, Expose Pods to Internet, Decouple settings, Define Pod access policy.
+
+
+# Pods
+Smallest unit we can interact with to manage containers lifecycle.
+ - InitContainers allows to order container startup.
+ - One ip address per pod (containers share the IP).
+ - Containers within a pod may communicate with each other using IPC, the lo, or a shared filesystem.
+ - A loging/proxy container may be added in the pod (sidecar, ambassador, adapter...).
+
+Network:
+One IP per pod, all the pod containers share the same network namespace.
+A pause container is used to get/set an IP address and namespace for the pod, before the other pod starts.
+
+ # Containers
+ Resources containers are allowed to consume are manageable, through :
+   - The PodSpec object (cpu and memory, min / max).
+   - A ResourceQuota object (more parameters).
+
+ Container initiation
+ To control initiation order, may use :
+  - LivenessProbes, ReadinessProbes, and StatefulSets (complex).
+  - An init container (must complete before application starts): initContainers spec in PodSpec.
+
+Container to outside path :
+  - Container A/B use the pause container ephemeral pod IP (192.168.1.27). The IP is set within the containers before they start.
+  - Pod IP communicate with one/many service ClusterIP (10.101.215.251), used to connect inside the cluster.
+  - The ClusterIP communicate with a node port service to access the outside world (12.45.105.121:35465 => endpoint 1682.168.1.27:80),
+    using iptables with ipvs.
+  - A cluster IP may also communicate with an IngressController to get access to the outside world.
+
+
+
+# Nodes
+An API object created outside the cluster representing an instance.
+  => Cp node with : kubeadm init
+  => join: worker nodes or secondary cp nodes.
+
+When the kube-apiserver cannot communicate with the kubelet on a node for 5 minutes, NodeLease will scheddule the node
+for deletion, and the NodeStatus will change.
+Node object : kube-node-lease namespace.
+
+Remove a node :
+  - kubectl delete node <node-name> (remove from api-server): pods will be evacuated.
+  - kubeadm reset : remove cluster-specific information.
+  - Remove iptables information.
+
+Get node information :
+  - kubectl describe node

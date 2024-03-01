@@ -1,0 +1,163 @@
+### Deploy a New Service.
+
+apiVersion: apps/v1
+# Determines YAML versioned schema.
+kind: Deployment
+# Describes the resource defined in this file.
+metadata:
+  name: nginx-one
+  labels:
+    system: secondary
+# Required string which defines object within namespace.
+  namespace: accounting
+# Existing namespace resource will be deployed into.
+spec:
+  selector:
+    matchLabels:
+      system: secondary
+# Declaration of the label for the deployment to manage
+  replicas: 2
+# How many Pods of following containers to deploy
+  template:
+    metadata:
+      labels:
+        system: secondary
+# Some string meaningful to users, not cluster. Keys must be unique for each object. Allows for mapping to customer needs.
+    spec:
+      containers:
+# Array of objects describing containerized application with a Pod.
+# Referenced with shorthand spec.template.spec.containers
+      - image: nginx:1.20.1
+# The Docker image to deploy
+        imagePullPolicy: Always
+        name: nginx
+# Unique name for each container, use local or Docker repo image
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+# Optional resources this container may need to function.
+      nodeSelector:
+        system: secondOne
+# One method of node affinity.
+
+
+# Show labels on nodes.
+kubectl get nodes --show-labels
+
+# Error: namespaces "accounting" not found.
+kubectl create -f nginx-one.yaml
+kubectl create ns accounting
+
+# Pending: Warning/FailedScheduling
+kubectl -n accounting get pods
+kubectl -n accounting describe pod nginx-one-5bdc6ddf4b-bkwxf
+
+# Label the worker node, see the pods are now running.
+kubectl label node ip-172-31-36-187.eu-west-3.compute.internal system=secondOne
+kubectl get nodes --show-labels
+kubectl -n accounting get pods
+
+# View the pods per label.
+kubectl get pods -l system=secondary --all-namespaces
+
+# Expose the deployment, will create a service (ClusterIp ???). Note cluster and pod ip/ports.
+kubectl -n accounting expose deployment nginx-one
+kubectl -n accounting get ep nginx-one
+kubectl -n accounting get service nginx-one
+
+# curl ip:8080 will not work (port exposed but nginx not listening on this port).
+# curl ip:80 should work (executed from the worker node).
+# Update the deployment to change exposed port from 8080 to 80, remove deployment and service and recreate them.
+# curl ips:80 works (executed from the worker node).
+
+
+### Configure a NodePort.
+# Remove previous service and create a new NodePort one.
+kubectl -n accounting delete service nginx-one
+kubectl -n accounting expose deployment nginx-one --type=NodePort --name=service-lab
+kubectl -n accounting describe services
+
+# See nginx is available on node public ip / exposed port.
+http://35.180.111.68:31730/
+
+
+### Working with CoreDNS.
+# Create a new ubuntu pod to test CoreDNS (nettool.yaml).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ubuntu
+spec:
+  containers:
+  - name: ubuntu
+    image: ubuntu:latest
+    command: ["sleep" ]
+    args: ["infinity" ]
+  nodeSelector:
+    system: secondOne
+
+
+kubectl create -f nettool.yaml
+kubectl exec -it ubuntu -- /bin/bash
+
+## In the container, install dnsutils, see nameservers and default domains to search in /etc/resolv.conf.
+apt-get update ; apt-get install curl dnsutils -y
+dig
+cat /etc/resolv.conf
+
+# dig the nameserver (-x get the FQDN),
+dig @10.96.0.10 -x 10.96.0.10
+
+# Try to reach the "service-lab" service we defined earlier.
+curl service-lab.accounting.svc.cluster.local.
+curl service-lab.accounting
+
+## Outside the container, get kube-dns service details, and pods that have the same label.
+kubectl -n kube-system get svc kube-dns -o yaml
+kubectl get pod -l k8s-app --all-namespaces
+
+# Get the details of one of the coredns pods.
+kubectl -n kube-system get pod coredns-5d78c9869d-9wbbl -o yaml
+
+# Display configmaps and details of coredns one.
+kubectl -n kube-system get configmaps
+kubectl -n kube-system get configmaps coredns -o yaml
+
+# Add a rewrite statement on test.io, delete core-dns pods to force restart and ConfigMap reload.
+# Rewrite name regex (.*)\.test\.io {1}.default.svc.cluster.local in .:53 {}.
+kubectl -n kube-system edit configmaps coredns
+
+# Create a new nginx deployment and expose it.
+kubectl create deployment nginx --image=nginx
+kubectl expose deployment nginx --type=ClusterIP --port=80
+kubectl get svc
+
+# Inside the net-tool container, dig the service internal IP (should return the service DNS), the service name (should return the IP).
+dig 10.106.130.77
+dig nginx.default.svc.cluster.local.
+
+# Test the rewrite rule we added earlier, note the answer FDQN does not match the question FDQN.
+dig nginx.test.io
+
+## Outside the container, edit again the config map to replace the previously added rewrite by the following.
+rewrite stop {
+  name regex (.*)\.test\.io {1}.default.svc.cluster.local
+  answer name (.*)\.default\.svc\.cluster\.local {1}.test.io
+}
+
+# Delete the core-dns pods, log into net-tool container, dig the added service.
+# This time the response should show the FQDN with the requested FQDN.
+dig nginx.test.io
+
+
+### Use Labels to Manage Resources.
+# Delete nginx pods using their label, view they are re-created.
+kubectl delete pods -l system=secondary --all-namespaces
+kubectl -n accounting get pods
+
+# View the deployment labels, delete it using the label.
+kubectl -n accounting get deploy --show-labels
+kubectl -n accounting delete deploy -l system=secondary
+
+# Remove the label from the worker node.
+kubectl label node worker system-

@@ -1,0 +1,316 @@
+### ConfigMaps creation and usage.
+## Create ConfigMaps from file, files in directory, literal.
+# Create environment (files).
+mkdir primary
+echo c > primary/cyan
+echo m > primary/magenta
+echo y > primary/yellow
+echo k > primary/black
+echo "known as key" >> primary/black
+echo blue > favorite
+
+# Create the ConfigMap object, from files in directory, file, and literal.
+kubectl create configmap colors --from-literal=text=black  --from-file=./favorite  --from-file=./primary/
+kubectl get configmap colors
+kubectl get configmap colors -o yaml
+
+# Create a pod using the ConfigMap object, using the environment variable method, referencing a key.
+# Echo the $ilike variable and delete pod.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: shell-demo
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    env:
+    - name: ilike
+      valueFrom:
+        configMapKeyRef:
+          name: colors
+          key: favorite
+
+kubectl exec shell-demo -- /bin/bash -c 'echo $ilike
+kubectl delete pod shell-demo
+
+# Create a pod using the ConfigMap object, using all variables included in the ConfigMap (not just a simple key).
+# Find them in the environment variable output, delete the pod.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: shell-demo
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    envFrom:
+    - configMapRef:
+        name: colors
+
+kubectl exec shell-demo -- /bin/bash -c 'env'
+
+kubectl delete pod shell-demo
+kubectl delete configmap colors
+
+## Create ConfigMaps from YAML file.
+# File simpleshell.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fast-car
+  namespace: default
+data:
+  car.make: Ford
+  car.model: Mustang
+  car.trim: Shelby
+
+kubectl create -f car-map.yaml
+kubectl get configmap fast-car
+kubectl get configmap fast-car -o yaml
+
+# Create a pod using the ConfigMap object, using the environment variable method, referencing a key.
+# File simpleshell.yaml.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: shell-demo
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    volumeMounts:
+    - name: car-vol
+      mountPath: /etc/cars
+  volumes:
+    - name: car-vol
+      configMap:
+        name: fast-car
+
+kubectl exec shell-demo -- /bin/bash -c 'df -ha |grep car'
+kubectl exec shell-demo -- /bin/bash -c 'ls -la /etc/cars'
+kubectl exec shell-demo -- /bin/bash -c 'cat /etc/cars/car.trim'
+
+kubectl delete pods shell-demo
+kubectl delete configmap fast-car
+
+
+### Create a Persistent NFS Volume (PV).
+# Install NFS on CP: sudo apt-get update && sudo \apt-get install -y nfs-kernel-server
+
+# Create shared directory.
+sudo mkdir /opt/sfw
+sudo chmod 1777 /opt/sfw/
+sudo bash -c 'echo software > /opt/sfw/hello.txt'
+
+# Add "/opt/sfw/ *(rw,sync,no_root_squash,subtree_check)" in /etc/exports, and share the directory.
+sudo exportfs -ra
+
+# Install NFS on the worker: sudo apt-get -y install nfs-common.
+showmount -e k8scp
+sudo mount k8scp:/opt/sfw /mnt
+ls -l /mnt
+
+# Create a PersistentVolume on the CP (PVol.yaml).
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pvvol-1
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    path: /opt/sfw
+    server: ip-172-31-44-140.eu-west-3.compute.internal
+    readOnly: false
+
+kubectl create -f PVol.yaml
+kubectl get pv
+
+
+### Create a Persistent Volume Claim (PVC).
+# Check if any exists:
+kubectl get pvc
+
+# Create the PVC (pvc.yaml), and check PV status is bound.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-one
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 200Mi
+
+
+kubectl create -f pvc.yaml
+kubectl get pvc
+kubectl get pv
+
+# Create a deployment to use the PVC (nfs-pod.yaml).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+  generation: 1
+  labels:
+    run: nginx
+  name: nginx-nfs
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      run: nginx
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        run: nginx
+    spec:
+      containers:
+      - image: nginx
+        imagePullPolicy: Always
+        name: nginx
+        volumeMounts:
+        - name: nfs-vol
+          mountPath: /opt
+        ports:
+        - containerPort: 80
+          protocol: TCP
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      volumes:
+      - name: nfs-vol
+        persistentVolumeClaim:
+          claimName: pvc-one
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+
+
+kubectl create -f nfs-pod.yaml
+# Check pod is running, mount is listed in description, pvc status is bound.
+kubectl get pods
+kubectl describe pod nginx-nfs-68686f6d59-mqcdv
+kubectl get pvc
+
+# Delete created resources.
+kubectl delete deploy nginx-nfs
+kubectl delete pvc pvc-one
+kubectl delete pv pvvol-1
+
+
+### Use a ResourceQuota to Limit PVC Count and Usage.
+# Create the ResourceQuota YAML file (storage-quota.yaml).
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: storagequota
+spec:
+  hard:
+    persistentvolumeclaims: "10"
+    requests.storage: "500Mi"
+
+# Create a namespace called "small", check there is no resource quota allocated to the namespace.
+kubectl create ns small
+kubectl describe ns small
+
+# Create a new pv and pvc in the small namespace, then the ResourceQuota.
+kubectl -n small create -f PVol.yaml
+kubectl -n small create -f pvc.yaml
+kubectl -n small create -f storage-quota.yaml
+kubectl describe ns small
+
+# Remove "namespace: default" from the deployment YAML file (nfs-pod.yaml), and create the deployment into the small ns.
+kubectl -n small create -f nfs-pod.yaml
+kubectl -n small get deploy
+kubectl -n small describe deploy nginx-nfs
+kubectl -n small describe pod nginx-nfs-68686f6d59-jtcfn
+kubectl describe ns small
+
+# Create a 300M file inside /opt/sfw directory.
+sudo dd if=/dev/zero of=/opt/sfw/bigfile bs=1M count=300
+kubectl describe ns small
+du -h /opt/
+
+# Delete current deployment, see the storage did not get cleaned.
+kubectl -n small delete deploy nginx-nfs
+kubectl describe ns small
+
+# Delete the PVC, see the PV status released.
+kubectl -n small delete pvc pvc-one
+kubectl -n small get pv
+
+# Delete and recreate the volume (why needed?), to update the persistentVolumeReclaimPolicy: Retain.
+kubectl get pv/pvvol-1 -o yaml
+kubectl delete pv/pvvol-1
+grep Retain PVol.yaml
+
+# Update the persistentVolumeReclaimPolicy to Delete.
+kubectl patch pv pvvol-1 -p '{"spec":{"persistentVolumeReclaimPolicy":"Delete"}}'
+kubectl get pv/pvvol-1
+kubectl describe ns small
+
+# Recreate the PVC, note the resource usage even with no pod running.
+kubectl -n small create -f pvc.yaml
+kubectl describe ns small
+
+# Remove the quota from the namespace.
+kubectl -n small get resourcequota
+kubectl -n small delete resourcequota storagequota
+
+# Edit the ResourceQuota YAML file (storage-quota.yaml), lower the capacity to 100Mi.
+# Create the new ResourceQuota object, see hard limit is exceeded.
+kubectl -n small create -f storage-quota.yaml
+kubectl describe ns small
+
+# Create the deployment, no error seen, pods are running, we are able to deploy pods even if capacity exceeded.
+kubectl -n small create -f nfs-pod.yaml
+kubectl -n small describe deploy/nginx-nfs
+kubectl -n small get po
+
+# Delete deployment and the pvc.
+kubectl -n small delete deploy nginx-nfs
+kubectl -n small delete pvc/pvc-one
+
+# See PV status Failed: NFS does not have a deleter plugin, so persistentVolumeReclaimPolicy: Delete failed.
+kubectl -n small get pv
+
+# Remove PV.
+kubectl delete pv/pvvol-1
+
+# Edit PV YAML file (PVol.yaml), change 2persistentVolumeReclaimPolicy to "Recycle".
+# Add a LimitRange to the namespace and attempt to create the PV and the PVC again.
+kubectl -n small create -f low-resource-range.yaml
+kubectl describe ns small
+kubectl -n small create -f PVol.yaml
+kubectl get pv
+
+# Try to create a PVC, see error due to exceeded quota.
+kubectl -n small create -f pvc.yaml
+
+# Edit the resourcequota, increase limit to 500Mi, create the PVC and deploy the pod.
+kubectl -n small edit resourcequota
+kubectl -n small create -f pvc.yaml
+kubectl -n small create -f nfs-pod.yaml
+
+# Delete resources.
+kubectl -n small delete deploy nginx-nfs
+kubectl -n small delete pvc pvc-one
+kubectl -n small get pv
+kubectl delete pv pvvol-1

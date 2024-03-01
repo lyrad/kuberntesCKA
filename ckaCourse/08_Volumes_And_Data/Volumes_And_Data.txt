@@ -1,0 +1,220 @@
+### Introducing Volumes.
+Volumes are declared and available into pod specifications (name, type, and mount point mandatory).
+Volumes can be made available to multiple containers within a Pod, or multiple Pods. (access mode for writing).
+No concurrency checking.
+
+# Pod Request and access mode: grant user more (but not less) access (to be completed).
+ - ReadWriteOnce: read-write by a single node.
+ - ReadOnlyMany: read-only by multiple nodes.
+ - ReadWriteMany: read-write by many nodes.
+
+### Volume Spec: Pod spec with volume "emptyDir" storage type.
+# Directory /scratch is created within container, but no storage will be mounted (not persistent, directory deleted with pod).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fordpinto
+  namespace: default
+spec:
+  containers:
+  - image: simpleapp
+    name: gastank
+    command:
+    - sleep
+    - "3600"
+    volumeMounts:
+    - mountPath: /scratch
+      name: scratch-volume
+  volumes:
+  - name: scratch-volume
+    emptyDir: {}
+
+
+### Volume Types.
+GCEpersistentDisk: GCE disk in pod.
+awsElasticBlockStore: AWS EBS disks in pod.
+emptyDir: An empty directory when the Pod dies, recreated when the container restarts.
+hostPath: resource (directory, file socket, character, block device) mounted from the host node filesystem.
+DirectoryOrCreate: Will create the resource on the host when not already exist.
+FileOrCreate: Will create the resource on the host when not already exist.
+NFS (Network File System) / iSCSI: good for multiple readers scenarios.
+rbd for block storage / CephFS / GlusterFS : good for multiple writers scenarios.
+
+azureDisk, azureFile, csi, downwardAPI, fc, flocker, gitRepo, local, projected, portworxVolume, quobyte, scaleIO, secret, storageos, vsphereVolume, persistentVolumeClaim, CSIPersistentVolumeSource...
+
+
+### Shared Volume Example.
+# Shared volume between two containers in the same pod, with emptyDir.
+containers:
+- name: alphacont
+  image: busybox
+  volumeMounts:
+  - mountPath: /alphadir
+    name: sharevol
+- name: betacont
+  image: busybox
+  volumeMounts:
+  - mountPath: /betadir
+    name: sharevol
+volumes:
+- name: sharevol
+  emptyDir: {}
+
+### Persistent Volumes and Claims.
+# Persistent volume (pv) is a storage abstraction used to store data over pod lifetime.
+# Pods define a persistentVolumeClaim (pvc) with parameters (size, StorageClass...), cluster then attaches the persistentVolume.
+Persistent storage phrases:
+  - Provisioning: From PVs created in advance (cluster admin) or requested from a dynamic source (cloud provider).
+  - Binding: Occurs when a control loop on the cp notices the PVC. The watcher locates a matching PV or waits for the StorageClass provisioner to create one.
+  - Use: When the bound volume is mounted for the Pod to use.
+  - Releasing: When the Pod is done with the volume and an API request is sent, deleting the PVC. "persistentVolumeReclaimPolicy" for data persistence.
+  - Reclaim: Retain|Delete|Recycle. Keep the data|Delete object and storage|rm -rf /mountpoint (deprecated).
+kubectl get pv
+kubectl get pvc
+
+### Persistent Volume Example.
+# Basic declaration of a Persistent Volume using the hostPath type.
+# Persistent volumes are not a namespaces object.
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: 10Gpv01
+  labels:
+    type: local
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/somepath/data01"
+
+
+### Persistent Volume Claim Example.
+# Claim object.
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: myclaim
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 8GI
+
+# In the pod, reference Claim object.
+spec:
+  containers:
+....
+  volumes:
+  - name: test-volume
+    persistentVolumeClaim:
+      claimName: myclaim
+
+
+### Dynamic Provisioning.
+# Cluster administrator still needs to create persistent volumes prior to claim abstracting the storage provider is done.
+# StorageClass is used to define a persistent volume provisioner of a certain type.
+
+# Example of a StorageClass using GCE.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: fast      # Could be any name
+provisioner: kubernetes.io/gce-pd
+parameters:
+  type: pd-ssd
+
+
+### Using Rook for Storage Orchestration.
+# The Rook project allows orchestration of storage using multiple storage providers.
+# Supports Ceph / Cassandra / Network File System (NFS).
+
+
+### Secrets.
+# Secrets are stored in the tmpfs storage on the host node. 1MB max per secret.
+## Secret Api Resource.
+# Api resource to encode/encrypt secrets (passwords...).
+kubectl get secrets
+kubectl create secret generic --help
+kubectl create secret generic mysql --from-literal=password=root
+
+# By default, secrets are only encoded.
+# To encrypt them, a EncryptionConfiguration must be created (key, identity).
+# The kube-apiserver needs the --encryption-provider-config set to the defined provider.
+# Multiple keys are possible (all will be tried). Rotation needs kube-apiserver processes restarted and secrets recreation.
+
+## Using Secrets via Environment Variables.
+# Example.
+...
+spec:
+  containers:
+  - image: mysql:5.5
+    name: dbpod
+    env:
+      - name: MYSQL_ROOT_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: mysql
+            key: password
+
+## Mounting Secrets as Volumes.
+# Secrets can be mounted as files using volumes once created through "kubectl create secret".
+# Check accessible: kubectl exec -ti busybox -- cat /mysqlpassword/password
+spec:
+  containers:
+  - image: busybox
+    command:
+    - sleep
+    - "3600"
+    volumeMounts:
+    - mountPath: /mysqlpassword
+      name: mysql
+    name: busy
+  volumes:
+  - name: mysql
+    secret:
+      secretName: mysql
+
+
+### ConfigMaps.
+# Similar to secrets but not encoded, store key/value pairs or plain configuration files.
+ConfigMaps usage.
+ - Pod environmental variables from single or multiple ConfigMaps.
+ - Use ConfigMap values in Pod commands.
+ - Populate Volume from ConfigMap.
+ - Add ConfigMap data to specific path in Volume.
+ - Set file names and access mode in Volume from ConfigMap data.
+ - Can be used by system components and controllers.
+
+Example local filesystem config.js:
+kubectl get configmap foobar -o yaml
+
+kind: ConfigMap
+apiVersion: v1
+metadata:
+    name: foobar
+data:
+    config.js: |
+         {
+...
+
+# ConfigMaps can be used as environment variables or using a volume mount.
+# ConfigMaps reside in a specific namespace.
+# ConfigMaps must exist prior to being used by a Pod, unless marked as optional.
+# ConfigMaps may be created from literal values, individual files, multiple files in the same directory.
+
+# Environment variables example.
+env:
+- name: SPECIAL_LEVEL_KEY
+  valueFrom:
+    configMapKeyRef:
+      name: special-config
+      key: special.how
+
+# Volumes example.
+volumes:
+- name: config-volume
+  configMap:
+    name: special-config

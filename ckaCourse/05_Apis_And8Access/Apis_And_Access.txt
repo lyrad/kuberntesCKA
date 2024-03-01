@@ -1,0 +1,70 @@
+### API Access.
+Kubernetes works with a REST-based API, through the kube-apiserver, hosting different API versions/group (specified in a request).
+kubectl is actually making API request on our behalf.
+
+Commands can also be sent through curl :
+curl --cert userbob.pem --key userBob-key.pem --cacert /path/to/ca.pem https://k8sServer:6443/api/v1/pods
+
+
+### Check authorisations.
+kubectl auth can-i create deployments
+kubectl auth can-i create deployments --as bob
+kubectl auth can-i create deployments --as bob --namespace developer
+
+Three APIs which can be applied to set who and what can be queried:
+  - SelfSubjectAccessReview: Access review for any user, helpful for delegating to others.
+  - LocalSubjectAccessReview: Review is restricted to a specific namespace.
+  - SelfSubjectRulesReview: A review which shows allowed actions for a user within a particular namespace.
+
+Command reconcile allows a check of authorization necessary to create an object from a file.
+
+
+### Optimistic Concurrency.
+An object is not locked from the time it has been read until the object is written.
+The resourceVersion is checked, and if it has changed since read, a 409 is returned.
+The resourceVersion is backed in the modifiedIndex parameter in the etcd database, and is unique to the namespace, kind and server.
+
+
+### Using Annotations.
+Annotations allow for metadata to be included with an object.
+Different from labels even if similar.
+
+kubectl annotate pods --all description='Production Pods' -n prod
+kubectl annotate --overwrite pod webpod description="Old Production Pods" -n prod
+kubectl -n prod annotate pod webpod description-
+
+### REST: kubectl.
+# Verbose mode, will display HTTP request and response.
+kubectl --v=10 get pods <mypod>
+kubectl --v=10 delete pods <mypod>
+
+# Afficher la configuration du cluster (~/.kube/config).
+kubectl config view
+
+# ~/.kube/config
+Sections:
+  - apiVersion: instructs the kube-apiserver where to assign the data.
+  - clusters: List of clusters, with name, certificate-authority-data (to authenticate the api request).
+  - contexts: allow easy access to multiple clusters, as various users (set namespace, user, cluster).
+  - current-context: which cluster and user kubectl will use (can also be passed in the command).
+  - kind: type of kubernetes object (Config).
+  - preferences: optional setting (coloring output...).
+  - users: Nickname associated with client credentials (kubectl config set-credentials).
+
+# Namespace : Every API call includes a namespace (default when not provided).
+4 namespaces when cluster first created :
+  - default: where resources are assumed unless set otherwise.
+  - kube-node-lease: worker node lease information.
+  - kube-public: general information, readable by all (not auth required).
+  - kube-system: infrastructure pods.
+
+kubectl get ns
+kubectl create ns linuxcon
+kubectl describe ns linuxcon
+kubectl get ns/linuxcon -o yaml
+kubectl delete ns/linuxcon
+kubectl logs firstpod
+
+GET /api/v1/namespaces/{namespace}/pods/{name}/exec
+GET /api/v1/namespaces/{namespace}/pods/{name}/log
+GET /api/v1/watch/namespaces/{namespace}/pods/{name}

@@ -1,0 +1,43 @@
+### Ingress Controller.
+An Ingress Controller is a daemon running in a Pod which watches the /ingresses endpoint on the API server.
+The ingresses/ endpoint (? Ingress object ?) is found under the networking.k8s.io/v1 group of objects.
+
+On endpoint creation, the daemon uses a configured set of rules to allow inbound connection to a service (mostly http traffic).
+Easy access to a service through an edge router to Pods.
+When multiple Ingress Controllers are deployed, Traffic should use annotations to select the proper controller.
+
+### nginx.
+Nginx controller: https://github.com/kubernetes/ingress-nginx/blob/main/docs/deploy/index.md
+Configuration customization can be done via a ConfigMap, Annotations, or a custom template.
+
+### Google Load Balancer Controller (GLBC).
+
+### Ingress API Resources.
+Ingress objects are part of the networking.k8s.io API.
+kubectl get ingress
+kubectl delete ingress <ingress_name>
+kubectl edit ingress <ingress_name>
+
+
+### Deploying the Ingress Controller.
+# https://github.com/kubernetes/ingress-nginx/blob/main/docs/deploy/index.md
+kubectl create -f backend.yaml
+
+# Result will be a set of pod managed by a replication controller, and some internal services.
+kubectl get pods,rc,svc
+
+
+### Creating an Ingress Rule / Multiple Rules.
+kubectl run ghost --image=ghost
+kubectl expose deployments ghost --port=2368
+
+Multiples rules can be used to forward traffic to specific services.
+
+### Intelligent Connected Proxies (service mesh).
+Service mesh consists of edge and embedded proxies communicating with each other and handling traffic based on rules from a control plane.
+
+Envoy: Modular and extensible proxy. Used as a data plane under other tools of a service mesh.
+Istio: Platform independent tool set which leverages Envoy proxies via a multi-component control plane.
+linkerd: Easy to deploy, fast, and ultralight service mesh.
+
+

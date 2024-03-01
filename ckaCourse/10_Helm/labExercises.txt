@@ -1,0 +1,47 @@
+### Install Helm.
+# Download / install helm archive.
+wget https://get.helm.sh/helm-v3.12.0-linux-amd64.tar.gz
+tar -xvf helm-v3.12.0-linux-amd64.tar.gz
+sudo cp linux-amd64/helm /usr/local/bin/helm
+
+# Example repo: https://github.com/kubernetes/charts/tree/master/stable.
+helm search hub database
+
+# Add a repo.
+helm repo add ealenn https://ealenn.github.io/charts
+helm repo update
+
+# Install a "tester" tool. A tester-echo-server should be running.
+helm upgrade -i tester ealenn/echo-server  --debug
+helm list
+kubectl get svc
+curl 10.105.136.118
+
+# Delete the tester Chart.
+helm uninstall tester
+helm list
+kubectl get svc
+
+# Find the downloaded chart, extract it, examine values.yaml.
+find $HOME -name *echo*
+cd $HOME/.cache/helm/repository
+tar -xvf echo-server-*
+cat echo-server/values.yaml
+
+# Download / examine values before installation, then install.
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm fetch bitnami/apache --untar
+cd apache/
+ls
+less values.yaml
+helm install anotherweb .
+
+# Test.
+helm list
+kubectl get svc
+curl 10.110.126.162
+
+# Uninstall.
+helm uninstall anotherweb
+helm list
+kubectl get svc

@@ -1,0 +1,41 @@
+### Helm v3.
+Many differences with helm v2.
+Software installation no longer generates a name automatically (provide or pass the --generated-name).
+
+
+### Chart Contents and templates.
+A chart is an archived set of Kubernetes resource manifests.
+
+├── Chart.yaml
+├── README.md
+├── templates
+│   ├── NOTES.txt
+│   ├── _helpers.tpl
+│   ├── configmap.yaml
+│   ├── deployment.yaml
+│   ├── pvc.yaml
+│   ├── secrets.yaml
+│   └── svc.yaml
+└── values.yaml
+
+ - Chart.yaml: metadata about the Chart (name, version, keywords...).
+ - values.yaml: keys/values used to generate the release in the cluster. Replaced in the resource manifest.
+ - templates (dir): contains the resources manifests.
+ - Resource manifests: Use the Go templating syntax. When release created, values.yaml injected in the template.
+
+### Chart Repositories and Hub.
+# Repositories are currently simple HTTP servers containing index file.
+helm search hub redis
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo list
+helm search repo bitnami
+
+### Deploying a Chart.
+Local agents (such as Tiller) deploy objects based on a chart.
+helm install <myPackage>
+dependency may be needed (such as PV... Check the README), chart deployment output will tell about missing dependencies.
+
+# Install a local repo.
+helm fetch bitnami/apache --untar
+cd apache/
+ls
